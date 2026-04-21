@@ -198,3 +198,76 @@ pub fn count_generations() -> CliResult<usize> {
     }
     Ok(n)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands;
+    use tempfile::tempdir;
+
+    /// Round-trip: create two generations (seed + child) via the `new` command,
+    /// then verify they show up through list + lineage (count, parent link, edges).
+    /// Uses `GLCTL_DATA_DIR` to isolate storage in a tempdir.
+    #[test]
+    fn roundtrip_new_list_lineage() {
+        let tmp = tempdir().expect("tempdir");
+        // SAFETY: single-threaded test run for this binary's tests; no other
+        // test touches GLCTL_DATA_DIR.
+        std::env::set_var("GLCTL_DATA_DIR", tmp.path());
+
+        // Sanity: no data yet.
+        assert_eq!(count_generations().unwrap(), 0);
+
+        // Create seed generation.
+        commands::new::run(commands::new::NewArgs {
+            soul: "seed".into(),
+            parent: None,
+            gains: vec![],
+            losses: vec![],
+            note: String::new(),
+            score: 0.42,
+            exec_time: None,
+            success: true,
+            tags: vec!["test".into()],
+        })
+        .expect("seed new");
+
+        let seed_id = load_all_generations().unwrap()[0].id.clone();
+
+        // Create child referencing the seed — should emit an evolved_from relation.
+        commands::new::run(commands::new::NewArgs {
+            soul: "child".into(),
+            parent: Some(seed_id.clone()),
+            gains: vec!["improved".into()],
+            losses: vec![],
+            note: String::new(),
+            score: 0.77,
+            exec_time: Some(12),
+            success: false,
+            tags: vec![],
+        })
+        .expect("child new");
+
+        // List/lineage handlers must succeed (they print to stdout).
+        commands::list::run(commands::list::ListArgs { json: true, limit: None })
+            .expect("list");
+        commands::lineage::run(commands::lineage::LineageArgs { json: true, from: None })
+            .expect("lineage");
+
+        // Storage-level assertions.
+        assert_eq!(count_generations().unwrap(), 2);
+        let gens = load_all_generations().unwrap();
+        let child = gens.iter().find(|g| g.soul == "child").expect("child row");
+        assert_eq!(child.parent_id.as_deref(), Some(seed_id.as_str()));
+        assert!(!child.metrics.success);
+        assert_eq!(child.metrics.execution_time_s, Some(12));
+
+        let rels = load_all_relations().unwrap();
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0].from, seed_id);
+        assert_eq!(rels[0].to, child.id);
+        assert_eq!(rels[0].relation_type, crate::models::RelationType::EvolvedFrom);
+
+        std::env::remove_var("GLCTL_DATA_DIR");
+    }
+}
