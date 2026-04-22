@@ -1,3 +1,3 @@
 pub mod generation;
 
-pub use generation::{Generation, Metrics, Relation, RelationType};
+pub use generation::{ConfigPatch, Generation, Metrics, Relation, RelationType};

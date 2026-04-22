@@ -30,6 +30,24 @@ pub struct Generation {
 
     #[serde(default)]
     pub tags: Vec<String>,
+
+    /// 이 generation이 부모 대비 바꾸려는 단일 config-knob 변경 제안.
+    /// 없으면 None — 기존 YAML 호환을 위해 `#[serde(default)]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_patch: Option<ConfigPatch>,
+}
+
+/// 단일 config 값의 변경 제안. 존재한다면 네 필드 모두 필수.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ConfigPatch {
+    /// 바꾸려는 config 키 이름 (예: "baseSpeed").
+    pub key: String,
+    /// 기존 값.
+    pub from: f64,
+    /// 제안하는 새 값.
+    pub to: f64,
+    /// 짧은 사람 읽기용 이유.
+    pub reason: String,
 }
 
 /// 실행 품질 지표.

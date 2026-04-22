@@ -1,6 +1,6 @@
 //! `glctl new` — 새 generation 생성.
 
-use crate::models::{Generation, Metrics, Relation, RelationType};
+use crate::models::{ConfigPatch, Generation, Metrics, Relation, RelationType};
 use crate::storage;
 use crate::{CliError, CliResult};
 use chrono::Utc;
@@ -43,6 +43,22 @@ pub struct NewArgs {
     /// 태그 (반복 지정 가능).
     #[arg(long = "tag")]
     pub tags: Vec<String>,
+
+    /// config_patch.key — 바꾸려는 config 키.
+    #[arg(long = "config-patch-key")]
+    pub config_patch_key: Option<String>,
+
+    /// config_patch.from — 기존 값.
+    #[arg(long = "config-patch-from")]
+    pub config_patch_from: Option<f64>,
+
+    /// config_patch.to — 제안하는 값.
+    #[arg(long = "config-patch-to")]
+    pub config_patch_to: Option<f64>,
+
+    /// config_patch.reason — 사람 읽기용 이유.
+    #[arg(long = "config-patch-reason")]
+    pub config_patch_reason: Option<String>,
 }
 
 pub fn run(args: NewArgs) -> CliResult<()> {
@@ -56,6 +72,28 @@ pub fn run(args: NewArgs) -> CliResult<()> {
             args.score
         )));
     }
+
+    // config_patch flags: all-or-none.
+    let config_patch = match (
+        args.config_patch_key.as_ref(),
+        args.config_patch_from,
+        args.config_patch_to,
+        args.config_patch_reason.as_ref(),
+    ) {
+        (None, None, None, None) => None,
+        (Some(key), Some(from), Some(to), Some(reason)) => Some(ConfigPatch {
+            key: key.clone(),
+            from,
+            to,
+            reason: reason.clone(),
+        }),
+        _ => {
+            return Err(CliError::Error(
+                "--config-patch-key, --config-patch-from, --config-patch-to, --config-patch-reason must be provided together (all or none)"
+                    .into(),
+            ));
+        }
+    };
 
     storage::ensure_dirs()?;
 
@@ -76,6 +114,7 @@ pub fn run(args: NewArgs) -> CliResult<()> {
             success: args.success,
         },
         tags: args.tags,
+        config_patch,
     };
 
     storage::save_generation(&gen)?;

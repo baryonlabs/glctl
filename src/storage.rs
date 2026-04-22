@@ -203,16 +203,21 @@ pub fn count_generations() -> CliResult<usize> {
 mod tests {
     use super::*;
     use crate::commands;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    /// Serializes tests that mutate the process-wide `GLCTL_DATA_DIR` env var.
+    /// Cargo runs tests in parallel by default, so without this lock one test
+    /// can clobber another's storage directory mid-run.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     /// Round-trip: create two generations (seed + child) via the `new` command,
     /// then verify they show up through list + lineage (count, parent link, edges).
     /// Uses `GLCTL_DATA_DIR` to isolate storage in a tempdir.
     #[test]
     fn roundtrip_new_list_lineage() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempdir().expect("tempdir");
-        // SAFETY: single-threaded test run for this binary's tests; no other
-        // test touches GLCTL_DATA_DIR.
         std::env::set_var("GLCTL_DATA_DIR", tmp.path());
 
         // Sanity: no data yet.
@@ -229,6 +234,10 @@ mod tests {
             exec_time: None,
             success: true,
             tags: vec!["test".into()],
+            config_patch_key: None,
+            config_patch_from: None,
+            config_patch_to: None,
+            config_patch_reason: None,
         })
         .expect("seed new");
 
@@ -245,6 +254,10 @@ mod tests {
             exec_time: Some(12),
             success: false,
             tags: vec![],
+            config_patch_key: None,
+            config_patch_from: None,
+            config_patch_to: None,
+            config_patch_reason: None,
         })
         .expect("child new");
 
@@ -267,6 +280,42 @@ mod tests {
         assert_eq!(rels[0].from, seed_id);
         assert_eq!(rels[0].to, child.id);
         assert_eq!(rels[0].relation_type, crate::models::RelationType::EvolvedFrom);
+
+        std::env::remove_var("GLCTL_DATA_DIR");
+    }
+
+    /// Round-trip a generation carrying a `config_patch`: all four fields
+    /// must survive YAML serialize → deserialize via `load_generation`.
+    #[test]
+    fn roundtrip_generation_with_config_patch() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempdir().expect("tempdir");
+        std::env::set_var("GLCTL_DATA_DIR", tmp.path());
+
+        commands::new::run(commands::new::NewArgs {
+            soul: "with-patch".into(),
+            parent: None,
+            gains: vec![],
+            losses: vec![],
+            note: String::new(),
+            score: 0.5,
+            exec_time: None,
+            success: true,
+            tags: vec![],
+            config_patch_key: Some("baseSpeed".into()),
+            config_patch_from: Some(1.0),
+            config_patch_to: Some(1.25),
+            config_patch_reason: Some("slightly faster".into()),
+        })
+        .expect("new with config_patch");
+
+        let id = load_all_generations().unwrap()[0].id.clone();
+        let loaded = load_generation(&generation_path(&id)).expect("load");
+        let cp = loaded.config_patch.expect("config_patch present");
+        assert_eq!(cp.key, "baseSpeed");
+        assert_eq!(cp.from, 1.0);
+        assert_eq!(cp.to, 1.25);
+        assert_eq!(cp.reason, "slightly faster");
 
         std::env::remove_var("GLCTL_DATA_DIR");
     }
