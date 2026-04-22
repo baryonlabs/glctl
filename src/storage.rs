@@ -238,6 +238,7 @@ mod tests {
             config_patch_from: None,
             config_patch_to: None,
             config_patch_reason: None,
+            config_patches_json: None,
         })
         .expect("seed new");
 
@@ -258,6 +259,7 @@ mod tests {
             config_patch_from: None,
             config_patch_to: None,
             config_patch_reason: None,
+            config_patches_json: None,
         })
         .expect("child new");
 
@@ -306,6 +308,7 @@ mod tests {
             config_patch_from: Some(1.0),
             config_patch_to: Some(1.25),
             config_patch_reason: Some("slightly faster".into()),
+            config_patches_json: None,
         })
         .expect("new with config_patch");
 
@@ -316,6 +319,49 @@ mod tests {
         assert_eq!(cp.from, 1.0);
         assert_eq!(cp.to, 1.25);
         assert_eq!(cp.reason, "slightly faster");
+
+        std::env::remove_var("GLCTL_DATA_DIR");
+    }
+
+    /// Round-trip a generation with a multi-knob `config_patches` Vec: both
+    /// entries survive serialize → deserialize and the legacy single-patch
+    /// field stays `None`.
+    #[test]
+    fn roundtrip_generation_with_config_patches_array() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempdir().expect("tempdir");
+        std::env::set_var("GLCTL_DATA_DIR", tmp.path());
+
+        let patches_json = r#"[
+            {"key":"baseSpeed","from":1.0,"to":1.25,"reason":"faster"},
+            {"key":"turnRate","from":0.4,"to":0.6,"reason":"agile"}
+        ]"#;
+        commands::new::run(commands::new::NewArgs {
+            soul: "multi-patch".into(),
+            parent: None,
+            gains: vec![],
+            losses: vec![],
+            note: String::new(),
+            score: 0.5,
+            exec_time: None,
+            success: true,
+            tags: vec![],
+            config_patch_key: None,
+            config_patch_from: None,
+            config_patch_to: None,
+            config_patch_reason: None,
+            config_patches_json: Some(patches_json.into()),
+        })
+        .expect("new with config_patches");
+
+        let id = load_all_generations().unwrap()[0].id.clone();
+        let loaded = load_generation(&generation_path(&id)).expect("load");
+        assert!(loaded.config_patch.is_none(), "single-patch field must stay None");
+        assert_eq!(loaded.config_patches.len(), 2);
+        assert_eq!(loaded.config_patches[0].key, "baseSpeed");
+        assert_eq!(loaded.config_patches[0].to, 1.25);
+        assert_eq!(loaded.config_patches[1].key, "turnRate");
+        assert_eq!(loaded.config_patches[1].reason, "agile");
 
         std::env::remove_var("GLCTL_DATA_DIR");
     }

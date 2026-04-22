@@ -59,6 +59,11 @@ pub struct NewArgs {
     /// config_patch.reason — 사람 읽기용 이유.
     #[arg(long = "config-patch-reason")]
     pub config_patch_reason: Option<String>,
+
+    /// 다중 config-knob 변경 제안. JSON 배열: `[{"key","from","to","reason"}, ...]`.
+    /// 최대 3개 엔트리. 단일 `--config-patch-*` 플래그와 동시 사용 불가.
+    #[arg(long = "config-patches-json")]
+    pub config_patches_json: Option<String>,
 }
 
 pub fn run(args: NewArgs) -> CliResult<()> {
@@ -71,6 +76,18 @@ pub fn run(args: NewArgs) -> CliResult<()> {
             "--score must be in [0.0, 1.0], got {}",
             args.score
         )));
+    }
+
+    // Mutual exclusion: single-patch flags vs. multi-patch JSON — pick one form.
+    let single_patch_any = args.config_patch_key.is_some()
+        || args.config_patch_from.is_some()
+        || args.config_patch_to.is_some()
+        || args.config_patch_reason.is_some();
+    if single_patch_any && args.config_patches_json.is_some() {
+        return Err(CliError::Error(
+            "use one form, not both: --config-patch-* flags and --config-patches-json are mutually exclusive"
+                .into(),
+        ));
     }
 
     // config_patch flags: all-or-none.
@@ -95,6 +112,26 @@ pub fn run(args: NewArgs) -> CliResult<()> {
         }
     };
 
+    // Multi-patch JSON: parse, cap at 3.
+    let config_patches: Vec<ConfigPatch> = match args.config_patches_json.as_deref() {
+        None => Vec::new(),
+        Some(raw) => {
+            let parsed: Vec<ConfigPatch> = serde_json::from_str(raw).map_err(|e| {
+                CliError::Error(format!(
+                    "--config-patches-json: failed to parse JSON array of ConfigPatch: {}",
+                    e
+                ))
+            })?;
+            if parsed.len() > 3 {
+                return Err(CliError::Error(format!(
+                    "--config-patches-json: at most 3 entries allowed, got {}",
+                    parsed.len()
+                )));
+            }
+            parsed
+        }
+    };
+
     storage::ensure_dirs()?;
 
     let now = Utc::now();
@@ -115,6 +152,7 @@ pub fn run(args: NewArgs) -> CliResult<()> {
         },
         tags: args.tags,
         config_patch,
+        config_patches,
     };
 
     storage::save_generation(&gen)?;

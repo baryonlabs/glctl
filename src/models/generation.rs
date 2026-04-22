@@ -35,6 +35,11 @@ pub struct Generation {
     /// 없으면 None — 기존 YAML 호환을 위해 `#[serde(default)]`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_patch: Option<ConfigPatch>,
+
+    /// 다중 config-knob 변경 제안. 비어있으면 직렬화 시 생략 — 구버전 YAML 호환.
+    /// 적용 측은 비어있지 않으면 이 Vec을 우선 사용하고, 비어있으면 단일 `config_patch`로 폴백한다.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub config_patches: Vec<ConfigPatch>,
 }
 
 /// 단일 config 값의 변경 제안. 존재한다면 네 필드 모두 필수.
