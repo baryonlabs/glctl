@@ -1,8 +1,8 @@
 //! YAML 파일 I/O 및 데이터 디렉토리 관리.
 //!
 //! 레이아웃:
-//!   ${GLCTL_DATA_DIR:-./data/glctl}/generations/{id}.yaml
-//!   ${GLCTL_DATA_DIR:-./data/glctl}/generations/relations/{from}-{to}.yaml
+//!   ${GLCTL_DATA_DIR:-./data/glctl}/companies/{company_id}/generations/{id}.yaml
+//!   ${GLCTL_DATA_DIR:-./data/glctl}/companies/{company_id}/generations/relations/{from}-{to}.yaml
 
 use crate::models::{Generation, Relation};
 use crate::{CliError, CliResult};
@@ -18,27 +18,58 @@ pub fn data_dir() -> PathBuf {
     }
 }
 
-pub fn generations_dir() -> PathBuf {
-    data_dir().join("generations")
+pub fn company_id() -> CliResult<String> {
+    let id = std::env::var("GLCTL_COMPANY_ID")
+        .map_err(|_| CliError::Error("GLCTL_COMPANY_ID or --company-id is required".into()))?;
+    let id = id.trim();
+    if id.is_empty() {
+        return Err(CliError::Error("company id must not be empty".into()));
+    }
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(CliError::Error(
+            "company id may only contain ASCII letters, digits, '-' and '_'".into(),
+        ));
+    }
+    Ok(id.to_string())
 }
 
-pub fn relations_dir() -> PathBuf {
-    data_dir().join("generations").join("relations")
+pub fn company_dir() -> CliResult<PathBuf> {
+    Ok(data_dir().join("companies").join(company_id()?))
 }
 
-pub fn generation_path(id: &str) -> PathBuf {
-    generations_dir().join(format!("{}.yaml", id))
+pub fn generations_dir() -> CliResult<PathBuf> {
+    Ok(company_dir()?.join("generations"))
 }
 
-pub fn relation_path(from: &str, to: &str) -> PathBuf {
-    relations_dir().join(format!("{}-{}.yaml", from, to))
+pub fn relations_dir() -> CliResult<PathBuf> {
+    Ok(company_dir()?.join("generations").join("relations"))
+}
+
+pub fn generation_path(id: &str) -> CliResult<PathBuf> {
+    Ok(generations_dir()?.join(format!("{}.yaml", id)))
+}
+
+pub fn relation_path(from: &str, to: &str) -> CliResult<PathBuf> {
+    Ok(relations_dir()?.join(format!("{}-{}.yaml", from, to)))
 }
 
 /// 필요한 디렉토리를 생성한다. 이미 있으면 no-op.
 pub fn ensure_dirs() -> CliResult<()> {
-    fs::create_dir_all(generations_dir())?;
-    fs::create_dir_all(relations_dir())?;
+    fs::create_dir_all(generations_dir()?)?;
+    fs::create_dir_all(relations_dir()?)?;
     Ok(())
+}
+
+/// Load one generation by id from the current company scope.
+pub fn load_generation_by_id(id: &str) -> CliResult<Generation> {
+    let path = generation_path(id)?;
+    if !path.is_file() {
+        return Err(CliError::NoData(format!("generation '{}' not found", id)));
+    }
+    load_generation(&path)
 }
 
 /// `gen-YYYYMMDD-NNN` 형식의 새 id를 생성한다.
@@ -49,7 +80,7 @@ pub fn next_generation_id(now: DateTime<Utc>) -> CliResult<String> {
     let prefix = format!("gen-{}-", date_str);
 
     let mut max_seq: u32 = 0;
-    let dir = generations_dir();
+    let dir = generations_dir()?;
     if dir.exists() {
         for entry in fs::read_dir(&dir)? {
             let entry = entry?;
@@ -76,7 +107,7 @@ pub fn next_generation_id(now: DateTime<Utc>) -> CliResult<String> {
 /// Generation 하나 저장.
 pub fn save_generation(gen: &Generation) -> CliResult<()> {
     ensure_dirs()?;
-    let path = generation_path(&gen.id);
+    let path = generation_path(&gen.id)?;
     let yaml = serde_yaml::to_string(gen)?;
     fs::write(&path, yaml)?;
     Ok(())
@@ -85,7 +116,7 @@ pub fn save_generation(gen: &Generation) -> CliResult<()> {
 /// Relation 하나 저장.
 pub fn save_relation(rel: &Relation) -> CliResult<()> {
     ensure_dirs()?;
-    let path = relation_path(&rel.from, &rel.to);
+    let path = relation_path(&rel.from, &rel.to)?;
     let yaml = serde_yaml::to_string(rel)?;
     fs::write(&path, yaml)?;
     Ok(())
@@ -93,45 +124,25 @@ pub fn save_relation(rel: &Relation) -> CliResult<()> {
 
 /// 한 파일에서 Generation 로드.
 pub fn load_generation(path: &Path) -> CliResult<Generation> {
-    let text = fs::read_to_string(path).map_err(|e| {
-        CliError::Error(format!(
-            "failed to read {}: {}",
-            path.display(),
-            e
-        ))
-    })?;
-    let gen: Generation = serde_yaml::from_str(&text).map_err(|e| {
-        CliError::Error(format!(
-            "failed to parse {}: {}",
-            path.display(),
-            e
-        ))
-    })?;
+    let text = fs::read_to_string(path)
+        .map_err(|e| CliError::Error(format!("failed to read {}: {}", path.display(), e)))?;
+    let gen: Generation = serde_yaml::from_str(&text)
+        .map_err(|e| CliError::Error(format!("failed to parse {}: {}", path.display(), e)))?;
     Ok(gen)
 }
 
 /// 한 파일에서 Relation 로드.
 pub fn load_relation(path: &Path) -> CliResult<Relation> {
-    let text = fs::read_to_string(path).map_err(|e| {
-        CliError::Error(format!(
-            "failed to read {}: {}",
-            path.display(),
-            e
-        ))
-    })?;
-    let rel: Relation = serde_yaml::from_str(&text).map_err(|e| {
-        CliError::Error(format!(
-            "failed to parse {}: {}",
-            path.display(),
-            e
-        ))
-    })?;
+    let text = fs::read_to_string(path)
+        .map_err(|e| CliError::Error(format!("failed to read {}: {}", path.display(), e)))?;
+    let rel: Relation = serde_yaml::from_str(&text)
+        .map_err(|e| CliError::Error(format!("failed to parse {}: {}", path.display(), e)))?;
     Ok(rel)
 }
 
 /// 모든 generation 로드 (정렬 보장 없음).
 pub fn load_all_generations() -> CliResult<Vec<Generation>> {
-    let dir = generations_dir();
+    let dir = generations_dir()?;
     if !dir.exists() {
         return Ok(Vec::new());
     }
@@ -155,7 +166,7 @@ pub fn load_all_generations() -> CliResult<Vec<Generation>> {
 
 /// 모든 relation 로드.
 pub fn load_all_relations() -> CliResult<Vec<Relation>> {
-    let dir = relations_dir();
+    let dir = relations_dir()?;
     if !dir.exists() {
         return Ok(Vec::new());
     }
@@ -179,7 +190,7 @@ pub fn load_all_relations() -> CliResult<Vec<Relation>> {
 
 /// Generation 개수.
 pub fn count_generations() -> CliResult<usize> {
-    let dir = generations_dir();
+    let dir = generations_dir()?;
     if !dir.exists() {
         return Ok(0);
     }
@@ -211,6 +222,16 @@ mod tests {
     /// can clobber another's storage directory mid-run.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    fn set_test_env(path: &Path, company_id: &str) {
+        std::env::set_var("GLCTL_DATA_DIR", path);
+        std::env::set_var("GLCTL_COMPANY_ID", company_id);
+    }
+
+    fn clear_test_env() {
+        std::env::remove_var("GLCTL_DATA_DIR");
+        std::env::remove_var("GLCTL_COMPANY_ID");
+    }
+
     /// Round-trip: create two generations (seed + child) via the `new` command,
     /// then verify they show up through list + lineage (count, parent link, edges).
     /// Uses `GLCTL_DATA_DIR` to isolate storage in a tempdir.
@@ -218,7 +239,7 @@ mod tests {
     fn roundtrip_new_list_lineage() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempdir().expect("tempdir");
-        std::env::set_var("GLCTL_DATA_DIR", tmp.path());
+        set_test_env(tmp.path(), "company_a");
 
         // Sanity: no data yet.
         assert_eq!(count_generations().unwrap(), 0);
@@ -239,6 +260,11 @@ mod tests {
             config_patch_to: None,
             config_patch_reason: None,
             config_patches_json: None,
+            do_not: vec![],
+            do_items: vec![],
+            skills: vec![],
+            bugs_fixed: vec![],
+            cases_json: None,
         })
         .expect("seed new");
 
@@ -260,14 +286,35 @@ mod tests {
             config_patch_to: None,
             config_patch_reason: None,
             config_patches_json: None,
+            do_not: vec!["do not repeat failed assumptions".into()],
+            do_items: vec!["record the decision boundary".into()],
+            skills: vec!["glhub-retrospective".into()],
+            bugs_fixed: vec!["missing evolution document context".into()],
+            cases_json: Some(
+                r#"[{"name":"Shortify prompts","impact":"Moved prompts toward structured output contracts"}]"#
+                    .into(),
+            ),
         })
         .expect("child new");
 
         // List/lineage handlers must succeed (they print to stdout).
-        commands::list::run(commands::list::ListArgs { json: true, limit: None })
-            .expect("list");
-        commands::lineage::run(commands::lineage::LineageArgs { json: true, from: None })
-            .expect("lineage");
+        commands::list::run(commands::list::ListArgs {
+            json: true,
+            limit: None,
+        })
+        .expect("list");
+        commands::lineage::run(commands::lineage::LineageArgs {
+            json: true,
+            from: None,
+        })
+        .expect("lineage");
+        commands::show::run(commands::show::ShowArgs {
+            id: seed_id.clone(),
+            json: true,
+        })
+        .expect("show");
+        commands::status::run(commands::status::StatusArgs { json: true }).expect("status");
+        commands::fsck::run(commands::fsck::FsckArgs { json: true }).expect("fsck");
 
         // Storage-level assertions.
         assert_eq!(count_generations().unwrap(), 2);
@@ -276,14 +323,89 @@ mod tests {
         assert_eq!(child.parent_id.as_deref(), Some(seed_id.as_str()));
         assert!(!child.metrics.success);
         assert_eq!(child.metrics.execution_time_s, Some(12));
+        assert_eq!(
+            child.retrospective.do_not,
+            vec!["do not repeat failed assumptions"]
+        );
+        assert_eq!(child.retrospective.skills, vec!["glhub-retrospective"]);
+        assert_eq!(child.retrospective.cases.len(), 1);
 
         let rels = load_all_relations().unwrap();
         assert_eq!(rels.len(), 1);
         assert_eq!(rels[0].from, seed_id);
         assert_eq!(rels[0].to, child.id);
-        assert_eq!(rels[0].relation_type, crate::models::RelationType::EvolvedFrom);
+        assert_eq!(
+            rels[0].relation_type,
+            crate::models::RelationType::EvolvedFrom
+        );
 
-        std::env::remove_var("GLCTL_DATA_DIR");
+        clear_test_env();
+    }
+
+    #[test]
+    fn storage_is_scoped_by_company_id() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempdir().expect("tempdir");
+        set_test_env(tmp.path(), "company_a");
+        commands::init::run(commands::init::InitArgs { json: true }).expect("init");
+
+        commands::new::run(commands::new::NewArgs {
+            soul: "company-a-seed".into(),
+            parent: None,
+            gains: vec![],
+            losses: vec![],
+            note: String::new(),
+            score: 0.5,
+            exec_time: None,
+            success: true,
+            tags: vec![],
+            config_patch_key: None,
+            config_patch_from: None,
+            config_patch_to: None,
+            config_patch_reason: None,
+            config_patches_json: None,
+            do_not: vec![],
+            do_items: vec![],
+            skills: vec![],
+            bugs_fixed: vec![],
+            cases_json: None,
+        })
+        .expect("company a new");
+        assert_eq!(count_generations().unwrap(), 1);
+
+        std::env::set_var("GLCTL_COMPANY_ID", "company_b");
+        assert_eq!(count_generations().unwrap(), 0);
+
+        commands::new::run(commands::new::NewArgs {
+            soul: "company-b-seed".into(),
+            parent: None,
+            gains: vec![],
+            losses: vec![],
+            note: String::new(),
+            score: 0.6,
+            exec_time: None,
+            success: true,
+            tags: vec![],
+            config_patch_key: None,
+            config_patch_from: None,
+            config_patch_to: None,
+            config_patch_reason: None,
+            config_patches_json: None,
+            do_not: vec![],
+            do_items: vec![],
+            skills: vec![],
+            bugs_fixed: vec![],
+            cases_json: None,
+        })
+        .expect("company b new");
+        assert_eq!(count_generations().unwrap(), 1);
+
+        std::env::set_var("GLCTL_COMPANY_ID", "company_a");
+        let gens = load_all_generations().unwrap();
+        assert_eq!(gens.len(), 1);
+        assert_eq!(gens[0].soul, "company-a-seed");
+
+        clear_test_env();
     }
 
     /// Round-trip a generation carrying a `config_patch`: all four fields
@@ -292,7 +414,7 @@ mod tests {
     fn roundtrip_generation_with_config_patch() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempdir().expect("tempdir");
-        std::env::set_var("GLCTL_DATA_DIR", tmp.path());
+        set_test_env(tmp.path(), "company_a");
 
         commands::new::run(commands::new::NewArgs {
             soul: "with-patch".into(),
@@ -309,18 +431,24 @@ mod tests {
             config_patch_to: Some(1.25),
             config_patch_reason: Some("slightly faster".into()),
             config_patches_json: None,
+            do_not: vec![],
+            do_items: vec![],
+            skills: vec![],
+            bugs_fixed: vec![],
+            cases_json: None,
         })
         .expect("new with config_patch");
 
         let id = load_all_generations().unwrap()[0].id.clone();
-        let loaded = load_generation(&generation_path(&id)).expect("load");
+        let loaded =
+            load_generation(&generation_path(&id).expect("generation path")).expect("load");
         let cp = loaded.config_patch.expect("config_patch present");
         assert_eq!(cp.key, "baseSpeed");
         assert_eq!(cp.from, 1.0);
         assert_eq!(cp.to, 1.25);
         assert_eq!(cp.reason, "slightly faster");
 
-        std::env::remove_var("GLCTL_DATA_DIR");
+        clear_test_env();
     }
 
     /// Round-trip a generation with a multi-knob `config_patches` Vec: both
@@ -330,7 +458,7 @@ mod tests {
     fn roundtrip_generation_with_config_patches_array() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempdir().expect("tempdir");
-        std::env::set_var("GLCTL_DATA_DIR", tmp.path());
+        set_test_env(tmp.path(), "company_a");
 
         let patches_json = r#"[
             {"key":"baseSpeed","from":1.0,"to":1.25,"reason":"faster"},
@@ -351,18 +479,27 @@ mod tests {
             config_patch_to: None,
             config_patch_reason: None,
             config_patches_json: Some(patches_json.into()),
+            do_not: vec![],
+            do_items: vec![],
+            skills: vec![],
+            bugs_fixed: vec![],
+            cases_json: None,
         })
         .expect("new with config_patches");
 
         let id = load_all_generations().unwrap()[0].id.clone();
-        let loaded = load_generation(&generation_path(&id)).expect("load");
-        assert!(loaded.config_patch.is_none(), "single-patch field must stay None");
+        let loaded =
+            load_generation(&generation_path(&id).expect("generation path")).expect("load");
+        assert!(
+            loaded.config_patch.is_none(),
+            "single-patch field must stay None"
+        );
         assert_eq!(loaded.config_patches.len(), 2);
         assert_eq!(loaded.config_patches[0].key, "baseSpeed");
         assert_eq!(loaded.config_patches[0].to, 1.25);
         assert_eq!(loaded.config_patches[1].key, "turnRate");
         assert_eq!(loaded.config_patches[1].reason, "agile");
 
-        std::env::remove_var("GLCTL_DATA_DIR");
+        clear_test_env();
     }
 }

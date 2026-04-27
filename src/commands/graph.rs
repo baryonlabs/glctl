@@ -53,7 +53,13 @@ pub fn run(_args: GraphArgs) -> CliResult<()> {
 /// Mermaid 노드 id로 안전하게 변환. `-`를 `_`로, 영숫자/언더스코어만 허용.
 fn sanitize_node_id(id: &str) -> String {
     id.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

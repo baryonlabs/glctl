@@ -66,12 +66,7 @@ pub fn run(args: ListArgs) -> CliResult<()> {
             let parent = it.parent_id.as_deref().unwrap_or("(seed)");
             println!(
                 "{:<22} {:<22} {:>5.2} {:<8} {:<25} {}",
-                it.id,
-                parent,
-                it.score,
-                it.success,
-                it.created_at,
-                it.soul
+                it.id, parent, it.score, it.success, it.created_at, it.soul
             );
         }
     }

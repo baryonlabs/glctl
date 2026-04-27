@@ -40,6 +40,11 @@ pub struct Generation {
     /// 적용 측은 비어있지 않으면 이 Vec을 우선 사용하고, 비어있으면 단일 `config_patch`로 폴백한다.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub config_patches: Vec<ConfigPatch>,
+
+    /// 회고 기록. 이번 generation에서 배운 운영 규칙, 만든 스킬,
+    /// 잡은 버그, 영향을 준 사례를 축적한다.
+    #[serde(default, skip_serializing_if = "Retrospective::is_empty")]
+    pub retrospective: Retrospective,
 }
 
 /// 단일 config 값의 변경 제안. 존재한다면 네 필드 모두 필수.
@@ -53,6 +58,49 @@ pub struct ConfigPatch {
     pub to: f64,
     /// 짧은 사람 읽기용 이유.
     pub reason: String,
+}
+
+/// 진화 회고. glhub의 Evolution Document가 이 필드를 중심으로 표시한다.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct Retrospective {
+    /// 앞으로 피해야 할 행동/패턴.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub do_not: Vec<String>,
+
+    /// 앞으로 해야 할 행동/패턴.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub r#do: Vec<String>,
+
+    /// 이번 generation에서 만들거나 강화한 스킬/런북/에이전트 프로필.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<String>,
+
+    /// 이번 generation에서 잡은 버그.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bugs_fixed: Vec<String>,
+
+    /// 판단에 영향을 준 사례, 외부 레퍼런스, 이전 cycle 사건.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cases: Vec<RetrospectiveCase>,
+}
+
+impl Retrospective {
+    pub fn is_empty(&self) -> bool {
+        self.do_not.is_empty()
+            && self.r#do.is_empty()
+            && self.skills.is_empty()
+            && self.bugs_fixed.is_empty()
+            && self.cases.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RetrospectiveCase {
+    /// 사례 이름 또는 짧은 제목.
+    pub name: String,
+
+    /// 이 사례가 이번 generation의 판단에 준 영향.
+    pub impact: String,
 }
 
 /// 실행 품질 지표.

@@ -22,14 +22,24 @@ use std::process::ExitCode;
     long_about = "AI 에이전트 실행의 generation 계보를 YAML 파일로 추적·관리하는 CLI."
 )]
 struct Cli {
+    /// Paperclip company id used to scope storage. Can also be set with GLCTL_COMPANY_ID.
+    #[arg(long = "company-id", global = true)]
+    company_id: Option<String>,
+
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Initialize the company-scoped generation repository.
+    Init(commands::init::InitArgs),
+
     /// Create a new generation record.
     New(commands::new::NewArgs),
+
+    /// Show one generation record.
+    Show(commands::show::ShowArgs),
 
     /// Output the lineage (nodes + edges).
     Lineage(commands::lineage::LineageArgs),
@@ -39,16 +49,34 @@ enum Command {
 
     /// List generations in reverse-chronological order.
     List(commands::list::ListArgs),
+
+    /// Summarize the current company-scoped repository.
+    Status(commands::status::StatusArgs),
+
+    /// Check repository integrity.
+    Fsck(commands::fsck::FsckArgs),
+
+    /// Push this company-scoped lineage snapshot to glhub.
+    Push(commands::push::PushArgs),
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
+    if let Some(company_id) = cli.company_id.as_deref() {
+        std::env::set_var("GLCTL_COMPANY_ID", company_id);
+    }
+
     let result = match cli.command {
+        Command::Init(args) => commands::init::run(args),
         Command::New(args) => commands::new::run(args),
+        Command::Show(args) => commands::show::run(args),
         Command::Lineage(args) => commands::lineage::run(args),
         Command::Graph(args) => commands::graph::run(args),
         Command::List(args) => commands::list::run(args),
+        Command::Status(args) => commands::status::run(args),
+        Command::Fsck(args) => commands::fsck::run(args),
+        Command::Push(args) => commands::push::run(args),
     };
 
     match result {

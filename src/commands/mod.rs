@@ -1,4 +1,9 @@
+pub mod fsck;
 pub mod graph;
+pub mod init;
 pub mod lineage;
 pub mod list;
 pub mod new;
+pub mod push;
+pub mod show;
+pub mod status;

@@ -126,7 +126,11 @@ pub fn run(args: LineageArgs) -> CliResult<()> {
 }
 
 fn print_text(out: &LineageOutput) {
-    println!("Lineage ({} nodes, {} edges)", out.nodes.len(), out.edges.len());
+    println!(
+        "Lineage ({} nodes, {} edges)",
+        out.nodes.len(),
+        out.edges.len()
+    );
     println!();
     println!("Nodes:");
     for n in &out.nodes {

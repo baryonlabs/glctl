@@ -1,6 +1,8 @@
 //! `glctl new` — 새 generation 생성.
 
-use crate::models::{ConfigPatch, Generation, Metrics, Relation, RelationType};
+use crate::models::{
+    ConfigPatch, Generation, Metrics, Relation, RelationType, Retrospective, RetrospectiveCase,
+};
 use crate::storage;
 use crate::{CliError, CliResult};
 use chrono::Utc;
@@ -64,6 +66,26 @@ pub struct NewArgs {
     /// 최대 3개 엔트리. 단일 `--config-patch-*` 플래그와 동시 사용 불가.
     #[arg(long = "config-patches-json")]
     pub config_patches_json: Option<String>,
+
+    /// 회고: 앞으로 피해야 할 행동/패턴. 반복 지정 가능.
+    #[arg(long = "do-not")]
+    pub do_not: Vec<String>,
+
+    /// 회고: 앞으로 해야 할 행동/패턴. 반복 지정 가능.
+    #[arg(long = "do")]
+    pub do_items: Vec<String>,
+
+    /// 회고: 만든/강화한 스킬, 런북, 에이전트 프로필. 반복 지정 가능.
+    #[arg(long = "skill")]
+    pub skills: Vec<String>,
+
+    /// 회고: 잡은 버그. 반복 지정 가능.
+    #[arg(long = "bug-fixed")]
+    pub bugs_fixed: Vec<String>,
+
+    /// 회고: 영향을 준 사례. JSON 배열: `[{"name","impact"}, ...]`.
+    #[arg(long = "case-json")]
+    pub cases_json: Option<String>,
 }
 
 pub fn run(args: NewArgs) -> CliResult<()> {
@@ -132,6 +154,16 @@ pub fn run(args: NewArgs) -> CliResult<()> {
         }
     };
 
+    let cases: Vec<RetrospectiveCase> = match args.cases_json.as_deref() {
+        None => Vec::new(),
+        Some(raw) => serde_json::from_str(raw).map_err(|e| {
+            CliError::Error(format!(
+                "--case-json: failed to parse JSON array of RetrospectiveCase: {}",
+                e
+            ))
+        })?,
+    };
+
     storage::ensure_dirs()?;
 
     let now = Utc::now();
@@ -153,13 +185,20 @@ pub fn run(args: NewArgs) -> CliResult<()> {
         tags: args.tags,
         config_patch,
         config_patches,
+        retrospective: Retrospective {
+            do_not: args.do_not,
+            r#do: args.do_items,
+            skills: args.skills,
+            bugs_fixed: args.bugs_fixed,
+            cases,
+        },
     };
 
     storage::save_generation(&gen)?;
 
     // 부모가 있으면 evolved_from relation 생성
     if let Some(parent) = &args.parent {
-        let parent_path = storage::generation_path(parent);
+        let parent_path = storage::generation_path(parent)?;
         if !parent_path.exists() {
             // 부모가 없으면 경고하지만 실패는 아님 — relation만 생략
             eprintln!(
