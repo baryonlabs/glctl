@@ -1,1 +1,18 @@
 /target
+
+# Local-only tooling — keep harness scaffolding, IDE settings, scratch
+# work out of the OSS repo. Anything related to the parent monorepo
+# (Nautilus) lives upstream, not here.
+.claude/
+_workspace/
+.vscode/
+.idea/
+.DS_Store
+*.swp
+.env
+.env.*
+!.env.example
+
+# Local glctl data
+.glctl-data/
+data/

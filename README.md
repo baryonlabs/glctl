@@ -260,7 +260,7 @@ Smoke push:
 
 ```sh
 GLCTL_COMPANY_ID=demo_company \
-GLCTL_DATA_DIR=/Users/hongmartin/dev/nautilus/data/glctl \
+GLCTL_DATA_DIR="$HOME/.glctl/data" \
 ./target/release/glctl push --remote http://127.0.0.1:3201
 ```
 
