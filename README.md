@@ -170,7 +170,7 @@ Remote resolution order:
 
 1. `--remote`
 2. `GLHUB_URL`
-3. `http://127.0.0.1:3201`
+3. `https://glhub.baryon.ai`
 
 Payload shape:
 
@@ -263,4 +263,3 @@ GLCTL_COMPANY_ID=demo_company \
 GLCTL_DATA_DIR="$HOME/.glctl/data" \
 ./target/release/glctl push --remote http://127.0.0.1:3201
 ```
-

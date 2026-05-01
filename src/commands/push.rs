@@ -8,6 +8,8 @@ use clap::Args;
 use serde::Serialize;
 use std::collections::HashSet;
 
+const DEFAULT_REMOTE: &str = "https://glhub.baryon.ai";
+
 #[derive(Args, Debug)]
 pub struct PushArgs {
     /// glhub base URL. Can also be set with GLHUB_URL.
@@ -40,7 +42,7 @@ pub fn run(args: PushArgs) -> CliResult<()> {
     let remote = args
         .remote
         .or_else(|| std::env::var("GLHUB_URL").ok())
-        .unwrap_or_else(|| "http://127.0.0.1:3201".to_string());
+        .unwrap_or_else(|| DEFAULT_REMOTE.to_string());
     let remote = remote.trim_end_matches('/');
     let company_id = storage::company_id()?;
     let mut generations = storage::load_all_generations()?;
