@@ -3,7 +3,7 @@ name = "glctl"
 version = "0.1.0"
 edition = "2021"
 description = "Generation Lineage Control Tool — YAML-based generation tracking for AI agents"
-license = "MIT"
+license = "Apache-2.0"
 
 [[bin]]
 name = "glctl"
