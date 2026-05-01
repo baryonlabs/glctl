@@ -1,8 +1,10 @@
 # glctl
 
-`glctl` is the Generation Lineage Control Tool for Paperclip. It is the Git-like
+`glctl` is the Generation Lineage Control Tool for Nautilus. It is the Git-like
 local CLI for recording, inspecting, validating, and pushing AI-agent evolution
 history.
+
+Nautilus is the meta-loop and system-of-record for AI agent work. Paperclip is one frontend (control plane / board UI); other frontends are possible. `glctl` and `glhub` serve Nautilus directly — they do not depend on any single frontend.
 
 The paired service is `glhub`: a separate web server that acts like a GitHub-like
 thinking space for evolution documents. `glctl` owns the local lineage store;
