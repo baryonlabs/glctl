@@ -1,4 +1,6 @@
+pub mod auth;
 pub mod fsck;
+pub mod login;
 pub mod graph;
 pub mod init;
 pub mod lineage;

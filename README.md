@@ -158,19 +158,61 @@ glctl fsck --json
 Checks generation id shape, score range, missing parents, missing relation edges,
 relation endpoints, and config patch limits.
 
+### login
+
+Authenticate with a glhub server interactively via browser. Spins up a local
+loopback HTTP server, opens the browser to `/login/cli` on glhub, captures the
+issued token after the OAuth round-trip, and saves it to `~/.glctl/config`.
+
+```sh
+glctl login                                # uses default remote
+glctl login --remote https://glhub.baryon.ai
+```
+
+The browser may already be signed in to glhub. If so, token issuance is
+immediate. Otherwise the flow goes through GitHub OAuth once and returns to
+`/login/cli`, preserving the loopback `redirect_uri` and CSRF `state`.
+
+### auth
+
+Save a Personal Access Token directly without the browser flow. Useful for
+headless / CI environments where you generated a token at glhub
+`/settings`.
+
+```sh
+glctl auth --token glhub_pat_xxxxxxxxxxxxxxxxxxxxxxxx
+glctl auth                                 # show masked current token
+```
+
+Token storage:
+
+```text
+~/.glctl/config            # JSON: { "token": "glhub_pat_..." }
+```
+
 ### push
 
 Push the current company-scoped snapshot to a glhub server.
 
 ```sh
-glctl push --remote http://127.0.0.1:3201
+glctl push --remote https://glhub.baryon.ai
 ```
+
+Token resolution order:
+
+1. `--token` flag (if added)
+2. `GLHUB_TOKEN` environment variable
+3. `~/.glctl/config`
 
 Remote resolution order:
 
 1. `--remote`
 2. `GLHUB_URL`
 3. `https://glhub.baryon.ai`
+
+Hosted endpoints (e.g. `https://glhub.baryon.ai`) require a valid Bearer token.
+Local self-hosted glhub may accept unauthenticated push depending on its
+configuration.
 
 Payload shape:
 
@@ -256,10 +298,19 @@ pnpm --filter @paperclipai/glhub typecheck
 pnpm --filter @paperclipai/glhub build
 ```
 
-Smoke push:
+Smoke push (local self-host):
 
 ```sh
 GLCTL_COMPANY_ID=demo_company \
 GLCTL_DATA_DIR="$HOME/.glctl/data" \
 ./target/release/glctl push --remote http://127.0.0.1:3201
+```
+
+Smoke push (hosted, requires login):
+
+```sh
+glctl login
+GLCTL_COMPANY_ID=demo_company \
+GLCTL_DATA_DIR="$HOME/.glctl/data" \
+./target/release/glctl push --remote https://glhub.baryon.ai
 ```

@@ -8,6 +8,7 @@
 //!   2 = 에러 (I/O, 파싱 등)
 
 mod commands;
+mod config;
 mod models;
 mod storage;
 
@@ -32,6 +33,12 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Authenticate with glhub interactively via browser.
+    Login(commands::login::LoginArgs),
+
+    /// Authenticate with glhub by saving a Personal Access Token directly.
+    Auth(commands::auth::AuthArgs),
+
     /// Initialize the company-scoped generation repository.
     Init(commands::init::InitArgs),
 
@@ -68,6 +75,8 @@ fn main() -> ExitCode {
     }
 
     let result = match cli.command {
+        Command::Login(args) => commands::login::run(args),
+        Command::Auth(args) => commands::auth::run(args),
         Command::Init(args) => commands::init::run(args),
         Command::New(args) => commands::new::run(args),
         Command::Show(args) => commands::show::run(args),

@@ -1,5 +1,6 @@
 //! `glctl push` — push the current company-scoped lineage snapshot to glhub.
 
+use crate::config;
 use crate::models::{Generation, Relation};
 use crate::storage;
 use crate::{CliError, CliResult};
@@ -15,6 +16,10 @@ pub struct PushArgs {
     /// glhub base URL. Can also be set with GLHUB_URL.
     #[arg(long)]
     pub remote: Option<String>,
+
+    /// glhub Personal Access Token. Overrides ~/.glctl/config and GLHUB_TOKEN env var.
+    #[arg(long)]
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -44,6 +49,18 @@ pub fn run(args: PushArgs) -> CliResult<()> {
         .or_else(|| std::env::var("GLHUB_URL").ok())
         .unwrap_or_else(|| DEFAULT_REMOTE.to_string());
     let remote = remote.trim_end_matches('/');
+
+    // Token resolution: flag > env var > ~/.glctl/config
+    let token = args
+        .token
+        .or_else(|| std::env::var("GLHUB_TOKEN").ok())
+        .or_else(|| config::load().ok().and_then(|c| c.token))
+        .ok_or_else(|| {
+            CliError::Error(
+                "no token found — run `glctl auth --token <TOKEN>` or set GLHUB_TOKEN".to_string(),
+            )
+        })?;
+
     let company_id = storage::company_id()?;
     let mut generations = storage::load_all_generations()?;
     let relations = storage::load_all_relations()?;
@@ -61,6 +78,7 @@ pub fn run(args: PushArgs) -> CliResult<()> {
     let url = format!("{}/api/push", remote);
     let response = reqwest::blocking::Client::new()
         .post(url)
+        .bearer_auth(token)
         .json(&payload)
         .send()
         .map_err(|e| CliError::Error(format!("push failed: {}", e)))?;
